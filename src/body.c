@@ -1532,7 +1532,8 @@ void b3Body_SetType( b3BodyId bodyId, b3BodyType type )
 			b3Shape* shape = b3Array_Get( world->shapes, shapeId );
 			if ( shape->type == b3_compoundShape || shape->type == b3_heightShape )
 			{
-				// Setting the body type is not supported for bodies with compound shapes
+				// Setting the body type is not supported for bodies with compound shapes.
+				world->locked = false;
 				return;
 			}
 
