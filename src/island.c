@@ -667,7 +667,13 @@ void b3SplitIslandTask( void* context )
 	b3SplitIsland( world, world->splitIslandId );
 
 	world->splitIslandId = B3_NULL_INDEX;
-	world->profile.splitIslands += b3GetMilliseconds( ticks );
+
+	// LOCAL CHANGE (atom-world): floored so that a split which ran always reports a non-zero
+	// time. The profile is zeroed each step and the host reads this as a flag — "did a split
+	// run this step" — to measure how deep the one-per-step queue gets. A split of a small
+	// island can take well under a microsecond, and at float precision that was indistinguishable
+	// from no split at all, which is exactly the question being asked.
+	world->profile.splitIslands += b3MaxFloat( b3GetMilliseconds( ticks ), 1e-6f );
 	b3TracyCZoneEnd( split );
 }
 
