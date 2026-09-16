@@ -25,8 +25,23 @@
 #include <stdio.h>
 
 // these are useful for solver testing
-#define ITERATIONS 1
-#define RELAX_ITERATIONS 1
+#define ITERATIONS ( b3_solverIterations )
+#define RELAX_ITERATIONS ( b3_solverRelaxIterations )
+
+/*
+ * ATOM: these were plain 1s. They are read from globals now so the sweep count can be changed
+ * at runtime and compared in the window without a rebuild — one sweep per sub-step is what
+ * leaves contacts under-solved, and it is the single biggest lever on whether a pile ever
+ * comes to rest. See docs/engine/work/pile-jostle.md.
+ */
+int b3_solverIterations = 1;
+int b3_solverRelaxIterations = 1;
+
+void b3SetSolverIterations( int iterations, int relaxIterations )
+{
+	b3_solverIterations = iterations < 1 ? 1 : iterations;
+	b3_solverRelaxIterations = relaxIterations < 1 ? 1 : relaxIterations;
+}
 
 #if ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __i386__ ) || defined( __x86_64__ ) )
 static void b3Pause( void )
