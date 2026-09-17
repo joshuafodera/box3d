@@ -1324,6 +1324,13 @@ void b3CollideHulls( b3LocalManifold* manifold, int capacity, const b3HullData* 
 	const b3Plane* planesB = b3GetHullPlanes( hullB );
 	const b3Vec3* pointsB = b3GetHullPoints( hullB );
 
+	// Local: b3CollideHulls never set this, so satCacheHitCount read a flat zero for
+	// every hull-vs-hull pair however well the cache was working — and every box we
+	// compile is a hull. Set optimistically here and cleared on the miss path below,
+	// which is exactly what b3CollideHullAndTriangle already does. Diagnostic only:
+	// `hit` is read by the counters and by nothing that simulates.
+	cache->hit = 1;
+
 	// Attempt to use the cache to speed up collision
 	switch ( cache->type )
 	{
@@ -1501,6 +1508,9 @@ void b3CollideHulls( b3LocalManifold* manifold, int capacity, const b3HullData* 
 
 	manifold->pointCount = 0;
 	*cache = (b3SATCache){ 0 };
+
+	// Cache miss
+	cache->hit = 0;
 
 	// Find axis of minimum penetration
 	b3FaceQuery faceQueryA = b3QueryFaceDirections( hullA, hullB, transformBtoA );
