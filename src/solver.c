@@ -664,6 +664,80 @@ static void b3SolveContinuous( b3World* world, int bodySimIndex, b3TaskContext* 
 }
 
 // Implements b3ParallelForCallback
+// atom-world patch (6): the displacement rest test. A body is restless when it has left the
+// neighbourhood where its sleep window began, or is moving fast whatever its displacement; leaving
+// re-anchors it there, so the window restarts.
+static bool b3LeftSleepAnchor( b3Body* body, const b3BodySim* sim, float maxVelocity, float radius )
+{
+	const float fastMultiple = 4.0f;
+	float moved = FLT_MAX;
+	if ( body->sleepAnchored )
+	{
+		b3Quat turn = b3InvMulQuat( body->sleepAnchorRotation, sim->transform.q );
+		float angle = 2.0f * b3Length( turn.v );
+		moved = b3Length( b3SubPos( sim->center, body->sleepAnchor ) ) + angle * b3Length( sim->maxExtent );
+	}
+
+	if ( maxVelocity > fastMultiple * body->sleepThreshold || moved > radius )
+	{
+		body->sleepAnchor = sim->center;
+		body->sleepAnchorRotation = sim->transform.q;
+		body->sleepAnchored = true;
+		return true;
+	}
+
+	return false;
+}
+
+// atom-world patch (6): the sleep quorum. Reads and clears the island's recovering count; the
+// island may sleep only while that count is within the policy's share of its bodies.
+static bool b3IslandHasTooManyRecovering( b3World* world, int islandId )
+{
+	b3Island* island = b3Array_Get( world->islands, islandId );
+	int recovering = island->recoveringBodies.value;
+	island->recoveringBodies.value = 0;
+	if ( recovering == 0 )
+	{
+		return false;
+	}
+
+	// Rounded down with no minimum: an island of fewer than 1 / quorum bodies gets no allowance,
+	// so a small structure beginning to tip is never put to sleep mid-fall.
+	int allowed = (int)( world->restPolicy.sleepQuorum * (float)island->bodies.count );
+	return recovering > allowed;
+}
+
+// atom-world patch (6): an island that was ready to sleep is split and its pieces put to sleep in
+// the same step. Every body in it was already past the time to sleep, so every piece is ready; in a
+// large pile some contact starts or stops touching almost every step, and deferring the pieces'
+// sleep to the next step handed that flicker a fresh pending split every time.
+static void b3SplitAndSleepIsland( b3World* world, int islandId )
+{
+	b3Island* island = b3Array_Get( world->islands, islandId );
+	int bodyCount = island->bodies.count;
+	int* bodyIds = B3_ALLOC( int, bodyCount );
+	memcpy( bodyIds, island->bodies.data, bodyCount * sizeof( int ) );
+
+	b3SplitIsland( world, islandId );
+
+	for ( int i = 0; i < bodyCount; ++i )
+	{
+		b3Body* body = b3Array_Get( world->bodies, bodyIds[i] );
+		if ( body->setIndex != b3_awakeSet || body->islandId == B3_NULL_INDEX )
+		{
+			continue;
+		}
+
+		b3Island* piece = b3Array_Get( world->islands, body->islandId );
+		if ( piece->setIndex == b3_awakeSet && piece->constraintRemoveCount == 0 )
+		{
+			b3TrySleepIsland( world, body->islandId );
+		}
+	}
+
+	B3_FREE( bodyIds, int, bodyCount );
+}
+
 static void b3FinalizeBodiesTask( int startIndex, int endIndex, int workerIndex, void* context )
 {
 	b3TracyCZoneNC( finalize_bodies, "Finalize", b3_colorMediumSeaGreen, true );
@@ -750,7 +824,13 @@ static void b3FinalizeBodiesTask( int startIndex, int endIndex, int workerIndex,
 		sim->flags &= ~b3_bodyTransientFlags;
 		state->flags &= ~b3_bodyTransientFlags;
 
-		if ( enableSleep == false || ( body->flags & b3_enableSleep ) == 0 || sleepVelocity > body->sleepThreshold )
+		bool restless = sleepVelocity > body->sleepThreshold;
+		if ( world->restPolicy.sleepDisplacement > 0.0f && body->type == b3_dynamicBody )
+		{
+			restless = b3LeftSleepAnchor( body, sim, maxVelocity, world->restPolicy.sleepDisplacement );
+		}
+
+		if ( enableSleep == false || ( body->flags & b3_enableSleep ) == 0 || restless )
 		{
 			// Body is not sleepy
 			body->sleepTime = 0.0f;
@@ -787,6 +867,13 @@ static void b3FinalizeBodiesTask( int startIndex, int endIndex, int workerIndex,
 			sim->center0 = sim->center;
 			sim->rotation0 = sim->transform.q;
 			body->sleepTime += timeStep;
+
+			if ( world->restPolicy.restDamping > 0.0f && body->type == b3_dynamicBody )
+			{
+				float keep = 1.0f - world->restPolicy.restDamping;
+				state->linearVelocity = b3MulSV( keep, state->linearVelocity );
+				state->angularVelocity = b3MulSV( keep, state->angularVelocity );
+			}
 		}
 
 		// Update world space inverse inertia tensor.
@@ -797,9 +884,16 @@ static void b3FinalizeBodiesTask( int startIndex, int endIndex, int workerIndex,
 		b3Island* island = b3Array_Get( world->islands, body->islandId );
 		if ( body->sleepTime < B3_TIME_TO_SLEEP )
 		{
-			// keep island awake
-			int islandIndex = island->localIndex;
-			b3SetBit( awakeIslandBitSet, islandIndex );
+			if ( world->restPolicy.sleepQuorum > 0.0f && restless == false )
+			{
+				b3AtomicFetchAddInt( &island->recoveringBodies, 1 );
+			}
+			else
+			{
+				// keep island awake
+				int islandIndex = island->localIndex;
+				b3SetBit( awakeIslandBitSet, islandIndex );
+			}
 		}
 		else if ( island->constraintRemoveCount > 0 )
 		{
@@ -2304,7 +2398,25 @@ void b3Solve( b3World* world, b3StepContext* stepContext )
 			b3InPlaceUnion( awakeIslandBitSet, &world->taskContexts.data[i].awakeIslandBitSet );
 		}
 
+		// Islands kept awake are not read below, so their recovering counts are cleared here and
+		// every step starts from zero.
+		for ( int i = 0; i < awakeSet->islandSims.count; ++i )
+		{
+			if ( b3GetBit( awakeIslandBitSet, i ) )
+			{
+				b3Island* awake = b3Array_Get( world->islands, awakeSet->islandSims.data[i].islandId );
+				awake->recoveringBodies.value = 0;
+			}
+		}
+
 		// Need to process in reverse because this moves islands to sleeping solver sets.
+		enum
+		{
+			maxSplitsPerStep = 256
+		};
+		int pendingSplits[maxSplitsPerStep];
+		int pendingSplitCount = 0;
+
 		b3IslandSim* islands = awakeSet->islandSims.data;
 		int count = awakeSet->islandSims.count;
 		for ( int islandIndex = count - 1; islandIndex >= 0; islandIndex -= 1 )
@@ -2318,7 +2430,39 @@ void b3Solve( b3World* world, b3StepContext* stepContext )
 			b3IslandSim* island = islands + islandIndex;
 			int islandId = island->islandId;
 
+			if ( b3IslandHasTooManyRecovering( world, islandId ) )
+			{
+				continue;
+			}
+
+			if ( world->restPolicy.splitEverySleepyIsland && pendingSplitCount < maxSplitsPerStep )
+			{
+				b3Island* sleepy = b3Array_Get( world->islands, islandId );
+				if ( sleepy->constraintRemoveCount > 0 && sleepy->bodies.count > 1 )
+				{
+					pendingSplits[pendingSplitCount++] = islandId;
+					continue;
+				}
+			}
+
 			b3TrySleepIsland( world, islandId );
+		}
+
+		for ( int i = 0; i < pendingSplitCount; ++i )
+		{
+			int islandId = pendingSplits[i];
+			b3Island* island = b3Array_Get( world->islands, islandId );
+			if ( island->setIndex != b3_awakeSet || island->constraintRemoveCount == 0 )
+			{
+				continue;
+			}
+
+			if ( islandId == world->splitIslandId )
+			{
+				world->splitIslandId = B3_NULL_INDEX;
+			}
+
+			b3SplitAndSleepIsland( world, islandId );
 		}
 
 		b3ValidateSolverSets( world );

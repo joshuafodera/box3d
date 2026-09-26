@@ -271,6 +271,9 @@ typedef struct b3World
 
 	bool enableSleep;
 
+	// atom-world patch (6): rest policy. See b3World_SetRestPolicy.
+	b3RestPolicy restPolicy;
+
 	// This indicates there is a world write operation in progress. This is for debugging and
 	// not a real mutex. This should have minimal performance impact.
 	bool locked;

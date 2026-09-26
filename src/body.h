@@ -104,6 +104,11 @@ typedef struct b3Body
 	float sleepThreshold;
 	float sleepTime;
 
+	// Where this body's current sleep window began, for the displacement rest policy.
+	b3Pos sleepAnchor;
+	b3Quat sleepAnchorRotation;
+	bool sleepAnchored;
+
 	float mass;
 
 	// local space inertia

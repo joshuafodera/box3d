@@ -315,6 +315,7 @@ b3WorldId b3CreateWorld( const b3WorldDef* def )
 
 	world->stepIndex = 0;
 	world->splitIslandId = B3_NULL_INDEX;
+	world->restPolicy = ( b3RestPolicy ){ 0 };
 	world->activeTaskCount = 0;
 	world->taskCount = 0;
 	world->gravity = def->gravity;
@@ -1925,6 +1926,69 @@ bool b3Contact_IsValid( b3ContactId id )
 	B3_ASSERT( contact->contactId == contactId );
 
 	return id.generation == contact->generation;
+}
+
+b3RestDetail b3World_GetRestDetail( b3WorldId worldId )
+{
+	b3RestDetail detail = { 0 };
+	b3World* world = b3GetWorldFromId( worldId );
+	if ( world == NULL )
+	{
+		return detail;
+	}
+
+	detail.lowestThreshold = FLT_MAX;
+	b3SolverSet* awakeSet = b3Array_Get( world->solverSets, b3_awakeSet );
+	for ( int i = 0; i < awakeSet->bodySims.count; ++i )
+	{
+		b3BodySim* sim = awakeSet->bodySims.data + i;
+		b3Body* body = b3Array_Get( world->bodies, sim->bodyId );
+		if ( body->type != b3_dynamicBody )
+		{
+			continue;
+		}
+
+		detail.awakeBodies += 1;
+		detail.lowestThreshold = b3MinFloat( detail.lowestThreshold, body->sleepThreshold );
+		if ( ( body->flags & b3_enableSleep ) == 0 )
+		{
+			detail.sleepDisabled += 1;
+		}
+
+		if ( body->sleepTime < B3_TIME_TO_SLEEP )
+		{
+			detail.restlessBodies += 1;
+			detail.resetThisStep += body->sleepTime == 0.0f ? 1 : 0;
+			b3BodyState* state = awakeSet->bodyStates.data + i;
+			float speed = b3Length( state->linearVelocity ) + b3Length( state->angularVelocity ) * b3Length( sim->maxExtent );
+			detail.fastestRestless = b3MaxFloat( detail.fastestRestless, speed );
+			detail.overThresholdNow += speed > body->sleepThreshold ? 1 : 0;
+		}
+	}
+
+	for ( int i = 0; i < awakeSet->islandSims.count; ++i )
+	{
+		b3Island* island = b3Array_Get( world->islands, awakeSet->islandSims.data[i].islandId );
+		detail.awakeIslands += 1;
+		detail.biggestIsland = island->bodies.count > detail.biggestIsland ? island->bodies.count : detail.biggestIsland;
+		detail.islandsPendingSplit += island->constraintRemoveCount > 0 ? 1 : 0;
+	}
+
+	return detail;
+}
+
+void b3World_SetRestPolicy( b3WorldId worldId, const b3RestPolicy* policy )
+{
+	b3World* world = b3GetUnlockedWorldFromId( worldId );
+	if ( world == NULL || policy == NULL )
+	{
+		return;
+	}
+
+	world->restPolicy.splitEverySleepyIsland = policy->splitEverySleepyIsland;
+	world->restPolicy.sleepDisplacement = b3MaxFloat( policy->sleepDisplacement, 0.0f );
+	world->restPolicy.restDamping = b3ClampFloat( policy->restDamping, 0.0f, 1.0f );
+	world->restPolicy.sleepQuorum = b3ClampFloat( policy->sleepQuorum, 0.0f, 1.0f );
 }
 
 void b3World_EnableSleeping( b3WorldId worldId, bool flag )

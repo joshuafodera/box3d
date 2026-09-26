@@ -3032,3 +3032,39 @@ typedef struct b3DebugDraw
 B3_API b3DebugDraw b3DefaultDebugDraw( void );
 
 /**@}*/ // debug_draw
+
+/// atom-world patch (6). How islands come to rest. Zero everywhere is upstream behaviour.
+typedef struct b3RestPolicy
+{
+	/// An island ready to sleep but carrying a lost contact is split and its pieces put to sleep in
+	/// the same step, instead of waiting in a one-island-per-step queue.
+	bool splitEverySleepyIsland;
+
+	/// When positive, a body is sleepy while it stays within this distance of where its sleep window
+	/// began, however its velocity flickers. Zero keeps the instantaneous velocity test.
+	float sleepDisplacement;
+
+	/// The fraction of velocity a sleepy body loses each step. A body over the threshold is never
+	/// damped, so impacts and falls are untouched.
+	float restDamping;
+
+	/// The fraction of an island that may still be recovering its sleep clock (under the threshold
+	/// now, but reset within the time to sleep) when the island is put to sleep. Any body over the
+	/// threshold still keeps its island awake. Zero requires every body.
+	float sleepQuorum;
+} b3RestPolicy;
+
+/// atom-world patch (6). Why the awake bodies are awake. See b3World_GetRestDetail.
+typedef struct b3RestDetail
+{
+	int awakeBodies;
+	int restlessBodies;
+	int resetThisStep;
+	int overThresholdNow;
+	int sleepDisabled;
+	int awakeIslands;
+	int biggestIsland;
+	int islandsPendingSplit;
+	float lowestThreshold;
+	float fastestRestless;
+} b3RestDetail;

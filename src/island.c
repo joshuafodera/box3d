@@ -39,6 +39,7 @@ b3Island* b3CreateIsland( b3World* world, int setIndex )
 	b3Array_Create( island->contacts );
 	b3Array_Create( island->joints );
 	island->constraintRemoveCount = 0;
+	island->recoveringBodies.value = 0;
 
 	b3IslandSim* islandSim = b3Array_Emplace( set->islandSims );
 	islandSim->islandId = islandId;

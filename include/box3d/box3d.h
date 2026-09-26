@@ -128,6 +128,12 @@ B3_API void b3World_CollideMover( b3WorldId worldId, b3Pos origin, const b3Capsu
 /// @see b3WorldDef
 B3_API void b3World_EnableSleeping( b3WorldId worldId, bool flag );
 
+/// atom-world patch (6). How islands come to rest. See b3RestPolicy.
+B3_API void b3World_SetRestPolicy( b3WorldId worldId, const b3RestPolicy* policy );
+
+/// atom-world patch (6). Why the awake bodies are awake, scanned on demand.
+B3_API b3RestDetail b3World_GetRestDetail( b3WorldId worldId );
+
 /// Is body sleeping enabled?
 B3_API bool b3World_IsSleepingEnabled( b3WorldId worldId );
 

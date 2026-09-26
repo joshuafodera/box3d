@@ -61,6 +61,10 @@ typedef struct b3Island
 	// This is used to determine if an island is a candidate for splitting.
 	int constraintRemoveCount;
 
+	// atom-world patch (6): bodies still recovering their sleep clock on the last step while
+	// under the threshold. Counted by the finalize workers, read and cleared by the sleep pass.
+	b3AtomicInt recoveringBodies;
+
 	// I tried using a stack array for this but the data pointer goes out of
 	// sync when the world island array grows.
 	b3Array( int ) bodies;
