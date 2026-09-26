@@ -739,11 +739,16 @@ bool b3OverlapCompound( const b3CompoundData* shape, b3Transform shapeTransform,
 		.overlap = false,
 	};
 
-	b3AABB aabb = { proxy->points[0], proxy->points[0] };
+	// atom-world patch: the child tree is in the compound's own frame, so the query box has to
+	// be too. Bounding the proxy as given searched the tree at the query's origin, and every
+	// overlap against a compound not sitting there reported nothing.
+	b3Vec3 first = b3InvTransformPoint( shapeTransform, proxy->points[0] );
+	b3AABB aabb = { first, first };
 	for ( int i = 1; i < proxy->count; ++i )
 	{
-		aabb.lowerBound = b3Min( aabb.lowerBound, proxy->points[i] );
-		aabb.upperBound = b3Max( aabb.upperBound, proxy->points[i] );
+		b3Vec3 local = b3InvTransformPoint( shapeTransform, proxy->points[i] );
+		aabb.lowerBound = b3Min( aabb.lowerBound, local );
+		aabb.upperBound = b3Max( aabb.upperBound, local );
 	}
 
 	b3Vec3 r = { proxy->radius, proxy->radius, proxy->radius };
