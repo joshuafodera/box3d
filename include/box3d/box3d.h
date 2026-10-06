@@ -131,6 +131,9 @@ B3_API void b3World_EnableSleeping( b3WorldId worldId, bool flag );
 /// atom-world patch (6). How islands come to rest. See b3RestPolicy.
 B3_API void b3World_SetRestPolicy( b3WorldId worldId, const b3RestPolicy* policy );
 
+/// ATOM: the contact sweeps this world solves with per sub-step, settable between steps.
+B3_API void b3World_SetSolverIterations( b3WorldId worldId, int iterations, int relaxIterations );
+
 /// atom-world patch (6). Why the awake bodies are awake, scanned on demand.
 B3_API b3RestDetail b3World_GetRestDetail( b3WorldId worldId );
 

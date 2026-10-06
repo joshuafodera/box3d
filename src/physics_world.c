@@ -316,6 +316,12 @@ b3WorldId b3CreateWorld( const b3WorldDef* def )
 	world->stepIndex = 0;
 	world->splitIslandId = B3_NULL_INDEX;
 	world->restPolicy = ( b3RestPolicy ){ 0 };
+
+	// ATOM: per-world sweeps, seeded from the process default.
+	extern int b3_solverIterations;
+	extern int b3_solverRelaxIterations;
+	world->solverIterations = b3_solverIterations;
+	world->solverRelaxIterations = b3_solverRelaxIterations;
 	world->activeTaskCount = 0;
 	world->taskCount = 0;
 	world->gravity = def->gravity;
@@ -1975,6 +1981,19 @@ b3RestDetail b3World_GetRestDetail( b3WorldId worldId )
 	}
 
 	return detail;
+}
+
+// ATOM: per-world contact sweeps, settable between steps.
+void b3World_SetSolverIterations( b3WorldId worldId, int iterations, int relaxIterations )
+{
+	b3World* world = b3GetUnlockedWorldFromId( worldId );
+	if ( world == NULL )
+	{
+		return;
+	}
+
+	world->solverIterations = iterations < 1 ? 1 : iterations;
+	world->solverRelaxIterations = relaxIterations < 1 ? 1 : relaxIterations;
 }
 
 void b3World_SetRestPolicy( b3WorldId worldId, const b3RestPolicy* policy )

@@ -274,6 +274,12 @@ typedef struct b3World
 	// atom-world patch (6): rest policy. See b3World_SetRestPolicy.
 	b3RestPolicy restPolicy;
 
+	// ATOM: the contact sweeps this world solves with, per sub-step. Seeded from the process-wide
+	// b3_solverIterations at creation; b3World_SetSolverIterations changes it between steps, so two
+	// worlds stepping at once can run different counts. See docs/engine/work/pile-jostle.md.
+	int solverIterations;
+	int solverRelaxIterations;
+
 	// This indicates there is a world write operation in progress. This is for debugging and
 	// not a real mutex. This should have minimal performance impact.
 	bool locked;

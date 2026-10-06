@@ -25,8 +25,10 @@
 #include <stdio.h>
 
 // these are useful for solver testing
-#define ITERATIONS ( b3_solverIterations )
-#define RELAX_ITERATIONS ( b3_solverRelaxIterations )
+// ATOM: read from the stepping world (b3World_SetSolverIterations), not a process global, so two
+// worlds stepping at once may differ. Each use site has `world` in scope.
+#define ITERATIONS ( world->solverIterations )
+#define RELAX_ITERATIONS ( world->solverRelaxIterations )
 
 /*
  * ATOM: these were plain 1s. They are read from globals now so the sweep count can be changed
@@ -1247,6 +1249,7 @@ static void b3SolverTask( void* taskContext )
 	b3WorkerContext* workerContext = (b3WorkerContext*)taskContext;
 	int workerIndex = workerContext->workerIndex;
 	b3StepContext* context = workerContext->context;
+	b3World* world = context->world; // ATOM: for ITERATIONS
 	int activeColorCount = context->activeColorCount;
 	b3SolverStage* stages = context->stages;
 	b3Profile* profile = &context->world->profile;
