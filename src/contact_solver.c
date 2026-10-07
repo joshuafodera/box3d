@@ -620,6 +620,14 @@ void b3ApplyRestitution_Mesh( b3SolverBlock block, b3StepContext* context )
 			int pointCount = cm->pointCount;
 			B3_ASSERT( 0 < pointCount && pointCount <= B3_MAX_MANIFOLD_POINTS );
 
+			// ATOM WORLD PATCH (restitution as one face): every point that struck bounces toward
+			// the same target, restitution times the points' AVERAGE approach speed, and the
+			// bounce is solved in a few passes rather than one. Each point aiming at its own
+			// approach speed, once and in order, put spin into a block landing a hair off flat
+			// from nothing: a rubber cube's second bounce gained 16% of its energy, all as spin.
+			bool struck[B3_MAX_MANIFOLD_POINTS] = { 0 };
+			float approach = 0.0f;
+			int strikes = 0;
 			for ( int pointIndex = 0; pointIndex < pointCount; ++pointIndex )
 			{
 				b3ManifoldConstraintPoint* cp = cm->points + pointIndex;
@@ -628,7 +636,26 @@ void b3ApplyRestitution_Mesh( b3SolverBlock block, b3StepContext* context )
 				// this skips speculative contact points that didn't generate an impulse
 				// The max normal impulse is used in case there was a collision that moved away within the sub-step
 				// process
-				if ( cp->relativeVelocity > -threshold || cp->totalNormalImpulse == 0.0f )
+				struck[pointIndex] = cp->relativeVelocity <= -threshold && cp->totalNormalImpulse != 0.0f;
+				if ( struck[pointIndex] )
+				{
+					approach += cp->relativeVelocity;
+					strikes += 1;
+				}
+			}
+
+			if ( strikes == 0 )
+			{
+				continue;
+			}
+
+			approach /= (float)strikes;
+
+			for ( int pass = 0; pass < 4 * pointCount; ++pass )
+			{
+				int pointIndex = pass % pointCount;
+				b3ManifoldConstraintPoint* cp = cm->points + pointIndex;
+				if ( struck[pointIndex] == false )
 				{
 					continue;
 				}
@@ -643,7 +670,7 @@ void b3ApplyRestitution_Mesh( b3SolverBlock block, b3StepContext* context )
 				float vn = b3Dot( b3Sub( vrB, vrA ), normal );
 
 				// compute normal impulse
-				float impulse = -cp->normalMass * ( vn + restitution * cp->relativeVelocity );
+				float impulse = -cp->normalMass * ( vn + restitution * approach );
 
 				// clamp the accumulated impulse
 				float newImpulse = b3MaxFloat( cp->normalImpulse + impulse, 0.0f );
@@ -2205,15 +2232,30 @@ void b3ApplyRestitution_Convex( b3SolverBlock block, b3StepContext* context )
 		// by the calculations below.
 		b3FloatW restitutionMask = b3EqualsW( c->restitution, zero );
 
+		// ATOM WORLD PATCH (restitution as one face): see b3ApplyRestitution. Which points struck
+		// is decided once, before any of them is solved, and they share one target.
+		b3FloatW skip[B3_MAX_MANIFOLD_POINTS];
+		b3FloatW approach = zero;
+		b3FloatW strikes = zero;
 		for ( int pointIndex = 0; pointIndex < B3_MAX_MANIFOLD_POINTS; ++pointIndex )
 		{
 			b3ContactConstraintPointWide* cp = c->points + pointIndex;
-
-			// Set effective mass to zero if restitution should not be applied
 			b3FloatW mask1 = b3GreaterThanW( b3AddW( cp->relativeVelocities, threshold ), zero );
 			b3FloatW mask2 = b3EqualsW( cp->totalNormalImpulses, zero );
-			b3FloatW mask = b3OrW( b3OrW( mask1, mask2 ), restitutionMask );
-			b3FloatW mass = b3BlendW( cp->normalMasses, zero, mask );
+			skip[pointIndex] = b3OrW( b3OrW( mask1, mask2 ), restitutionMask );
+			approach = b3AddW( approach, b3BlendW( cp->relativeVelocities, zero, skip[pointIndex] ) );
+			strikes = b3AddW( strikes, b3BlendW( b3SplatW( 1.0f ), zero, skip[pointIndex] ) );
+		}
+
+		approach = b3DivW( approach, b3MaxW( strikes, b3SplatW( 1.0f ) ) );
+
+		for ( int pass = 0; pass < 4 * B3_MAX_MANIFOLD_POINTS; ++pass )
+		{
+			int pointIndex = pass % B3_MAX_MANIFOLD_POINTS;
+			b3ContactConstraintPointWide* cp = c->points + pointIndex;
+
+			// Set effective mass to zero if restitution should not be applied
+			b3FloatW mass = b3BlendW( cp->normalMasses, zero, skip[pointIndex] );
 
 			// Fixed anchors for impulses
 			b3Vec3W rA = cp->anchorAs;
@@ -2225,7 +2267,7 @@ void b3ApplyRestitution_Convex( b3SolverBlock block, b3StepContext* context )
 			b3FloatW vn = b3DotW( b3SubVW( vrB, vrA ), c->normal );
 
 			// Compute normal impulse
-			b3FloatW negImpulse = b3MulW( mass, b3AddW( vn, b3MulW( c->restitution, cp->relativeVelocities ) ) );
+			b3FloatW negImpulse = b3MulW( mass, b3AddW( vn, b3MulW( c->restitution, approach ) ) );
 
 			// Clamp the accumulated impulse
 			b3FloatW newImpulse = b3MaxW( b3SubW( cp->normalImpulses, negImpulse ), b3ZeroW() );
