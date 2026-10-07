@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Erin Catto
 // SPDX-License-Identifier: MIT
 
+#include <string.h>
+#include <stdlib.h>
 #include "solver.h"
 
 #include "arena_allocator.h"
@@ -485,6 +487,19 @@ static bool b3ContinuousQueryCallback( int proxyId, uint64_t userData, void* con
 	return true;
 }
 
+// ATOM (patch 8): read once; every thread that races here writes the same answer.
+static bool b3PublishSweptPose( void )
+{
+	static int cached = -1;
+	if ( cached < 0 )
+	{
+		const char* value = getenv( "ATOMWORLD_SWEPT_POSE" );
+		cached = ( value != NULL && strcmp( value, "on" ) == 0 ) ? 1 : 0;
+	}
+
+	return cached == 1;
+}
+
 // Continuous collision of dynamic versus static
 static void b3SolveContinuous( b3World* world, int bodySimIndex, b3TaskContext* taskContext )
 {
@@ -579,6 +594,14 @@ static void b3SolveContinuous( b3World* world, int bodySimIndex, b3TaskContext* 
 		fastBodySim->center = center;
 		fastBodySim->rotation0 = q;
 		fastBodySim->center0 = center;
+
+		// ATOM (patch 8): the move event was written in b3FinalizeBodiesTask before this sweep
+		// ran, so it still holds the pose the body reached INSIDE what it hit. With
+		// ATOMWORLD_SWEPT_POSE=on, publish the swept pose instead. Off is upstream behaviour.
+		if ( b3PublishSweptPose() )
+		{
+			world->bodyMoveEvents.data[bodySimIndex].transform = transform;
+		}
 
 		// Prepare AABBs for broad-phase.
 		// Even though a body is fast, it may not move much. So the AABB may not need enlargement.
