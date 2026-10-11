@@ -739,6 +739,16 @@ bool b3UpdateContact( b3World* world, int workerIndex, b3Contact* contact, b3Sha
 
 		childShapeA.type = child.type;
 
+		// atom-world patch: a convex child's contact reads its own material, not the compound's
+		// first. Without this every child of a compound — every cell of a terrain chunk — bounced
+		// and gripped as whichever matter happened to be listed first in its chunk.
+		if ( child.type != b3_meshShape )
+		{
+			int materialIndex = b3ClampInt( child.materialIndices[0], 0, shapeA->materialCount - 1 );
+			childShapeA.materials = b3GetShapeMaterials( shapeA ) + materialIndex;
+			childShapeA.materialCount = 1;
+		}
+
 		if ( child.type == b3_capsuleShape )
 		{
 			childShapeA.capsule = child.capsule;
