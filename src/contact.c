@@ -607,6 +607,42 @@ static bool b3ComputeConvexManifold( b3World* world, int workerIndex, b3Contact*
 	return true;
 }
 
+// atom-world patch: how deep a contact may be and still be a seam's ghost, in world units (atoms):
+// a tenth of an atom, 4 mm, twenty-five times the deepest a resting box sinks.
+#define B3_ATOM_GHOST_DEPTH 0.1f
+
+// atom-world patch: whether a contact pushing a shape out along `out` (world) leaves through one
+// of its buried faces. The mask is the engine's (ATOM_BURIED_FACES_SHIFT in atom_native.h): bits
+// +X, -X, +Y, -Y, +Z, -Z of a box in its body's frame. The face a contact pushes out of is the one
+// its normal lies most along; a tie with an open face keeps the contact, so a true edge stays an
+// edge.
+static bool b3AtomPushesOutOfBuriedFace( uint64_t userMaterialId, b3Quat q, b3Vec3 out )
+{
+	uint32_t buried = (uint32_t)( userMaterialId >> 32 ) & 0x3Fu;
+	if ( buried == 0 )
+	{
+		return false;
+	}
+
+	b3Vec3 local = b3InvRotateVector( q, out );
+	float along[6] = { local.x, -local.x, local.y, -local.y, local.z, -local.z };
+	float buriedMost = -1.0f;
+	float openMost = -1.0f;
+	for ( int face = 0; face < 6; ++face )
+	{
+		if ( ( buried >> face ) & 1u )
+		{
+			buriedMost = b3MaxFloat( buriedMost, along[face] );
+		}
+		else
+		{
+			openMost = b3MaxFloat( openMost, along[face] );
+		}
+	}
+
+	return buriedMost > openMost;
+}
+
 static bool b3UpdateConvexContact( b3World* world, int workerIndex, b3Contact* contact, b3Shape* shapeA, b3WorldTransform xfA,
 								   b3Shape* shapeB, b3WorldTransform xfB, bool flip, b3Arena arena )
 {
@@ -636,6 +672,37 @@ static bool b3UpdateConvexContact( b3World* world, int workerIndex, b3Contact* c
 
 	const b3SurfaceMaterial* materialA = b3GetShapeMaterials( shapeA );
 	const b3SurfaceMaterial* materialB = b3GetShapeMaterials( shapeB );
+
+	// atom-world patch: a box face buried against more of the same matter is not a surface. The
+	// engine compiles matter to boxes that meet flush, and a box sliding across the seam between
+	// two of them meets the second one's buried side as a wall (lattice-bodies.md, L0). Meshes
+	// drop these ghost contacts through their adjacency; boxes have none, so the engine marks a
+	// box's buried faces in the high half of its material id and the contact is dropped here when
+	// it pushes out of one. The normal points from the first shape to the second, and the flip
+	// above already turned it, so the first shape pushes out along -n when flipped.
+	//
+	// Only a SHALLOW contact is a ghost: the seam's is speculative or a few thousandths of an atom
+	// deep. Something driven deep into a box keeps whatever contact it has, so nothing that has
+	// already gone in can be let through by this.
+	{
+		const b3Manifold* manifold = contact->manifolds + 0;
+		float deepest = 0.0f;
+		for ( int i = 0; i < manifold->pointCount; ++i )
+		{
+			deepest = b3MinFloat( deepest, manifold->points[i].separation );
+		}
+
+		b3Vec3 outOfA = flip ? b3Neg( manifold->normal ) : manifold->normal;
+		if ( deepest > -B3_ATOM_GHOST_DEPTH &&
+			 ( b3AtomPushesOutOfBuriedFace( materialA->userMaterialId, xfA.q, outOfA ) ||
+			   b3AtomPushesOutOfBuriedFace( materialB->userMaterialId, xfB.q, b3Neg( outOfA ) ) ) )
+		{
+			b3FreeManifolds( world, contact->manifolds, contact->manifoldCount );
+			contact->manifolds = NULL;
+			contact->manifoldCount = 0;
+			return false;
+		}
+	}
 
 	// Keep these updated in case the values on the shapes are modified
 	contact->friction =
