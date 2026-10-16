@@ -2216,9 +2216,18 @@ b3HullData* b3CloneHull( const b3HullData* hull )
 
 uint64_t b3HashHullData( const b3HullData* hull )
 {
-	// The baked content hash already covers byteCount. Spread the 32 bits across 64 so the table
-	// can use the high bits for its fast reject fragment.
-	return (uint64_t)hull->hash * 0x9E3779B97F4A7C15ull;
+	// The baked content hash already covers byteCount. The table takes its home bucket from the low
+	// bits and its fast reject fragment from the high ones, so every bit of the 32 is mixed into
+	// both. A multiply alone leaves the low bits a function of the hash's own low bits only, and
+	// b3Hash's are weak: boxes at whole-number offsets shared them, landed in one bucket, and n
+	// boxes on one body cost n^2 to add (Atom World, simplification.md X5: 4,000 boxes, 66 ms).
+	uint64_t h = hull->hash;
+	h ^= h >> 33;
+	h *= 0xFF51AFD7ED558CCDull;
+	h ^= h >> 33;
+	h *= 0xC4CEB9FE1A85EC53ull;
+	h ^= h >> 33;
+	return h;
 }
 
 bool b3CompareHullData( const b3HullData* hull1, const b3HullData* hull2 )
