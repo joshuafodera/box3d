@@ -2134,6 +2134,19 @@ float b3World_GetHitEventThreshold( b3WorldId worldId )
 	return world->hitEventThreshold;
 }
 
+void b3World_SetOneWayCategory( b3WorldId worldId, uint64_t categoryBits )
+{
+	b3World* world = b3GetUnlockedWorldFromId( worldId );
+	if ( world == NULL )
+	{
+		return;
+	}
+
+	B3_REC( world, WorldSetOneWayCategory, worldId, categoryBits );
+
+	world->oneWayCategoryBits = categoryBits;
+}
+
 void b3World_SetContactTuning( b3WorldId worldId, float hertz, float dampingRatio, float contactSpeed )
 {
 	b3World* world = b3GetUnlockedWorldFromId( worldId );

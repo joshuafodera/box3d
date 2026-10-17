@@ -192,6 +192,12 @@ B3_API void b3World_Explode( b3WorldId worldId, const b3ExplosionDef* explosionD
 /// @note Advanced feature
 B3_API void b3World_SetContactTuning( b3WorldId worldId, float hertz, float dampingRatio, float contactSpeed );
 
+/// AtomWorld patch: shapes whose category lies wholly in these bits meet everything else one way.
+/// In such a contact the other body is immovable to the solver: it pushes the one-way shape and
+/// is never pushed back. Islands still link, so a body a one-way shape rests on carries it.
+/// Applies to contacts made after the call. Zero (the default) turns it off.
+B3_API void b3World_SetOneWayCategory( b3WorldId worldId, uint64_t categoryBits );
+
 /// Set the contact point recycling distance. Setting this to zero disables contact point recycling.
 /// Usually in meters.
 B3_API void b3World_SetContactRecycleDistance( b3WorldId worldId, float recycleDistance );

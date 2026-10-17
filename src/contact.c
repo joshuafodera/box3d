@@ -248,6 +248,26 @@ void b3CreateContact( b3World* world, b3Shape* shapeA, b3Shape* shapeB, int chil
 		contact->flags |= b3_contactEnableContactEvents;
 	}
 
+	// AtomWorld patch: a one-way shape against anything outside its category — the other side
+	// is immovable to this contact (b3World_SetOneWayCategory).
+	uint64_t oneWay = world->oneWayCategoryBits;
+	if ( oneWay != 0 )
+	{
+		// One way only when EVERY category bit it carries is a one-way bit: the default category
+		// is all bits, so "any bit" made every ordinary body one way against a blade.
+		uint64_t catA = shapeA->filter.categoryBits, catB = shapeB->filter.categoryBits;
+		bool aOneWay = catA != 0 && ( catA & ~oneWay ) == 0;
+		bool bOneWay = catB != 0 && ( catB & ~oneWay ) == 0;
+		if ( bOneWay && aOneWay == false )
+		{
+			contact->flags |= b3_contactOneWayA;
+		}
+		else if ( aOneWay && bOneWay == false )
+		{
+			contact->flags |= b3_contactOneWayB;
+		}
+	}
+
 	// Connect to body A
 	{
 		contact->edges[0].bodyId = shapeA->bodyId;

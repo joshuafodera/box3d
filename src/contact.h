@@ -44,6 +44,10 @@ enum b3ContactFlags
 
 	b3_contactRecycleFlag = 0x00000010,
 
+	// AtomWorld patch: body A (or B) is immovable to this contact — the other shape is one way.
+	b3_contactOneWayA = 0x00000020,
+	b3_contactOneWayB = 0x00000040,
+
 	// Set when the shapes are touching
 	b3_simTouchingFlag = 0x00010000,
 

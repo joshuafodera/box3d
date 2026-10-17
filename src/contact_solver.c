@@ -145,6 +145,19 @@ void b3PrepareContacts_Mesh( b3SolverBlock block, b3StepContext* context )
 				wB = stateB->angularVelocity;
 			}
 
+			// AtomWorld patch: the immovable side of a one-way contact keeps its velocity, so it
+			// still pushes, and takes no impulse.
+			if ( contact->flags & b3_contactOneWayA )
+			{
+				mA = 0.0f;
+				iA = b3Mat3_zero;
+			}
+			else if ( contact->flags & b3_contactOneWayB )
+			{
+				mB = 0.0f;
+				iB = b3Mat3_zero;
+			}
+
 			int manifoldCount = contact->manifoldCount;
 			contactConstraint->contact = contact;
 			contactConstraint->manifoldCount = manifoldCount;
@@ -156,7 +169,7 @@ void b3PrepareContacts_Mesh( b3SolverBlock block, b3StepContext* context )
 			contactConstraint->invMassB = mB;
 			contactConstraint->rollingMass = b3InvertMatrix( b3AddMM( iA, iB ) );
 			contactConstraint->softness =
-				( contact->flags & b3_contactStaticFlag ) != 0 ? context->staticSoftness : context->contactSoftness;
+				( contact->flags & ( b3_contactStaticFlag | b3_contactOneWayA | b3_contactOneWayB ) ) != 0 ? context->staticSoftness : context->contactSoftness;
 			contactConstraint->friction = contact->friction;
 			contactConstraint->restitution = contact->restitution;
 			contactConstraint->rollingResistance = contact->rollingResistance;
@@ -1760,6 +1773,19 @@ void b3PrepareContacts_Convex( b3SolverBlock block, b3StepContext* context )
 					wB = stateB->angularVelocity;
 				}
 
+				// AtomWorld patch: see the scalar path — the immovable side takes no impulse.
+				bool oneWay = ( contact->flags & ( b3_contactOneWayA | b3_contactOneWayB ) ) != 0;
+				if ( contact->flags & b3_contactOneWayA )
+				{
+					mA = 0.0f;
+					iA = b3Mat3_zero;
+				}
+				else if ( contact->flags & b3_contactOneWayB )
+				{
+					mB = 0.0f;
+					iB = b3Mat3_zero;
+				}
+
 				( (float*)&constraint->invMassA )[lane] = mA;
 				( (float*)&constraint->invMassB )[lane] = mB;
 
@@ -1777,7 +1803,7 @@ void b3PrepareContacts_Convex( b3SolverBlock block, b3StepContext* context )
 				( (float*)&constraint->invIB.cyz )[lane] = iB.cy.z;
 				( (float*)&constraint->invIB.czz )[lane] = iB.cz.z;
 
-				b3Softness soft = ( indexA == B3_NULL_INDEX || indexB == B3_NULL_INDEX ) ? staticSoftness : contactSoftness;
+				b3Softness soft = ( indexA == B3_NULL_INDEX || indexB == B3_NULL_INDEX || oneWay ) ? staticSoftness : contactSoftness;
 
 				b3Vec3 normal = manifold->normal;
 				( (float*)&constraint->normal.X )[lane] = normal.x;

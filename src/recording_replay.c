@@ -786,6 +786,11 @@ static void b3RecDispatch_WorldSetContactTuning( const b3RecArgs_WorldSetContact
 	b3World_SetContactTuning( rdr->replayWorldId, a->hertz, a->dampingRatio, a->contactSpeed );
 }
 
+static void b3RecDispatch_WorldSetOneWayCategory( const b3RecArgs_WorldSetOneWayCategory* a, b3RecReader* rdr )
+{
+	b3World_SetOneWayCategory( rdr->replayWorldId, a->categoryBits );
+}
+
 static void b3RecDispatch_WorldSetContactRecycleDistance( const b3RecArgs_WorldSetContactRecycleDistance* a, b3RecReader* rdr )
 {
 	b3World_SetContactRecycleDistance( rdr->replayWorldId, a->recycleDistance );

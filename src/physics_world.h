@@ -226,6 +226,10 @@ typedef struct b3World
 	float restitutionThreshold;
 	float maxLinearSpeed;
 	float contactSpeed;
+
+	// AtomWorld patch: shapes in these categories meet the rest of the world one way. The world
+	// moves them; they never move it (b3World_SetOneWayCategory).
+	uint64_t oneWayCategoryBits;
 	float contactHertz;
 	float contactDampingRatio;
 	float contactRecycleDistance;
