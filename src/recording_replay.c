@@ -796,6 +796,11 @@ static void b3RecDispatch_WorldSetOneWayAsGround( const b3RecArgs_WorldSetOneWay
 	b3World_SetOneWayAsGround( rdr->replayWorldId, a->flag );
 }
 
+static void b3RecDispatch_WorldSetOneWayGroundMoves( const b3RecArgs_WorldSetOneWayGroundMoves* a, b3RecReader* rdr )
+{
+	b3World_SetOneWayGroundMoves( rdr->replayWorldId, a->flag );
+}
+
 static void b3RecDispatch_WorldSetContactRecycleDistance( const b3RecArgs_WorldSetContactRecycleDistance* a, b3RecReader* rdr )
 {
 	b3World_SetContactRecycleDistance( rdr->replayWorldId, a->recycleDistance );

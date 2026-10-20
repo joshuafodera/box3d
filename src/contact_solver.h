@@ -49,6 +49,11 @@ typedef struct b3ContactConstraint
 	float restitution;
 	float rollingResistance;
 	int manifoldCount;
+
+	// AtomWorld patch: a one-way contact's ground side that moves (b3World_SetOneWayGroundMoves) —
+	// 0 for A, 1 for B, -1 for none — and its awake index, read from the step's still states.
+	int stillSide;
+	int stillIndex;
 } b3ContactConstraint;
 
 int b3GetWideContactConstraintByteCount( void );

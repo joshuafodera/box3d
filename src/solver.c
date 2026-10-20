@@ -89,6 +89,7 @@ static void b3IntegrateVelocitiesTask( b3SolverBlock block, b3StepContext* conte
 
 	b3BodyState* states = context->states;
 	b3BodySim* sims = context->sims;
+	b3BodyState* stillStates = context->stillStates;
 
 	b3Vec3 gravity = context->world->gravity;
 	float h = context->h;
@@ -183,6 +184,12 @@ static void b3IntegrateVelocitiesTask( b3SolverBlock block, b3StepContext* conte
 
 		state->linearVelocity = v;
 		state->angularVelocity = w;
+
+		// AtomWorld patch: the body as this substep's solve will find it (b3World_SetOneWayGroundMoves).
+		if ( stillStates != NULL )
+		{
+			stillStates[i] = *state;
+		}
 	}
 
 	b3TracyCZoneEnd( integrate_velocity );
@@ -195,6 +202,7 @@ static void b3IntegratePositionsTask( b3SolverBlock block, b3StepContext* contex
 	B3_VALIDATE( block.startIndex + block.count <= context->world->solverSets.data[b3_awakeSet].bodyStates.count );
 
 	b3BodyState* states = context->states;
+	b3BodyState* stillStates = context->stillStates;
 	float h = context->h;
 	float maxLinearSpeed = context->maxLinearVelocity;
 	float maxAngularSpeed = B3_MAX_ROTATION * context->inv_dt;
@@ -236,6 +244,12 @@ static void b3IntegratePositionsTask( b3SolverBlock block, b3StepContext* contex
 		state->angularVelocity = w;
 		state->deltaPosition = b3MulAdd( state->deltaPosition, h, v );
 		state->deltaRotation = b3IntegrateRotation( state->deltaRotation, b3MulSV( h, w ) );
+
+		// AtomWorld patch: and as the relax and restitution stages will find it.
+		if ( stillStates != NULL )
+		{
+			stillStates[i] = *state;
+		}
 	}
 
 	b3TracyCZoneEnd( integrate_positions );
@@ -1817,6 +1831,11 @@ void b3Solve( b3World* world, b3StepContext* stepContext )
 		// b3_stageStoreImpulses
 		stageCount += 1;
 
+		// AtomWorld patch: the ground side's snapshot (b3World_SetOneWayGroundMoves).
+		bool groundMoves = world->oneWayAsGround && world->oneWayGroundMoves && awakeBodyCount > 0;
+		stepContext->stillStates =
+			groundMoves ? (b3BodyState*)b3StackAlloc( &world->stack, awakeBodyCount * sizeof( b3BodyState ), "still states" ) : NULL;
+
 		b3SolverStage* stages = (b3SolverStage*)b3StackAlloc( &world->stack, stageCount * sizeof( b3SolverStage ), "stages" );
 		b3SyncBlock* bodyBlocks =
 			(b3SyncBlock*)b3StackAlloc( &world->stack, bodyDim.count * sizeof( b3SyncBlock ), "body blocks" );
@@ -2011,6 +2030,11 @@ void b3Solve( b3World* world, b3StepContext* stepContext )
 		b3StackFree( &world->stack, convexBlocks );
 		b3StackFree( &world->stack, bodyBlocks );
 		b3StackFree( &world->stack, stages );
+		if ( stepContext->stillStates != NULL )
+		{
+			b3StackFree( &world->stack, stepContext->stillStates );
+			stepContext->stillStates = NULL;
+		}
 		b3StackFree( &world->stack, overflow->manifoldConstraints );
 		b3StackFree( &world->stack, overflow->contactConstraints );
 		b3StackFree( &world->stack, manifoldConstraints );
