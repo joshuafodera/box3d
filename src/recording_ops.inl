@@ -39,6 +39,7 @@ B3_REC_OP( 0x0B, WorldEnableWarmStarting, RET_NONE, ARG( WORLDID, world ) ARG( B
 B3_REC_OP( 0x0C, WorldRebuildStaticTree, RET_NONE, ARG( WORLDID, world ) )
 B3_REC_OP( 0x0D, WorldEnableSpeculative, RET_NONE, ARG( WORLDID, world ) ARG( BOOL, flag ) )
 B3_REC_OP( 0x0E, WorldSetOneWayCategory, RET_NONE, ARG( WORLDID, world ) ARG( U64, categoryBits ) )
+B3_REC_OP( 0x0F, WorldSetOneWayAsGround, RET_NONE, ARG( WORLDID, world ) ARG( BOOL, flag ) )
 
 // Body
 B3_REC_OP( 0x10, CreateBody, RET_BODYID, ARG( WORLDID, world ) ARG( BODYDEF, def ) )

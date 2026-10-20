@@ -370,6 +370,7 @@ void b3DestroyContact( b3World* world, b3Contact* contact, bool wakeBodies )
 
 	uint32_t flags = contact->flags;
 	bool touching = ( flags & b3_contactTouchingFlag ) != 0;
+	int ground = b3GroundSide( world->oneWayAsGround, flags );
 
 	// End touch event
 	if ( touching && ( flags & b3_contactEnableContactEvents ) != 0 )
@@ -460,7 +461,11 @@ void b3DestroyContact( b3World* world, b3Contact* contact, bool wakeBodies )
 		// contact is an active constraint
 		B3_ASSERT( contact->setIndex == b3_awakeSet );
 		bool meshContact = contact->flags & b3_simMeshContact;
-		b3RemoveContactFromGraph( world, bodyIdA, bodyIdB, contact->colorIndex, contact->localIndex, meshContact );
+
+		// AtomWorld patch: a ground side took no colour, and its body's bit belongs to another constraint.
+		int colouredA = ground == 0 ? bodyIdB : bodyIdA;
+		int colouredB = ground == 1 ? bodyIdA : bodyIdB;
+		b3RemoveContactFromGraph( world, colouredA, colouredB, contact->colorIndex, contact->localIndex, meshContact );
 	}
 	else
 	{
@@ -487,8 +492,16 @@ void b3DestroyContact( b3World* world, b3Contact* contact, bool wakeBodies )
 
 	if ( wakeBodies && touching )
 	{
-		b3WakeBody( world, bodyA );
-		b3WakeBody( world, bodyB );
+		// AtomWorld patch: a one-way body going never wakes its ground side (b3World_SetOneWayAsGround).
+		if ( ground != 0 )
+		{
+			b3WakeBody( world, bodyA );
+		}
+
+		if ( ground != 1 )
+		{
+			b3WakeBody( world, bodyB );
+		}
 	}
 }
 

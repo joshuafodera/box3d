@@ -618,9 +618,13 @@ static void b3CollideTask( int startIndex, int endIndex, int workerIndex, void* 
 		bool isStaticB = bodyB->type == b3_staticBody;
 		bool wasTouching = ( contact->flags & b3_simTouchingFlag );
 		bool isMeshContact = ( contact->flags & b3_simMeshContact );
+
+		// AtomWorld patch: a one-way contact's ground side may sleep under a touching one-way body
+		// (b3World_SetOneWayAsGround), so it is looked up in whatever set holds it.
+		int ground = b3GroundSide( world->oneWayAsGround, contact->flags );
 		b3BodySim* bodySimA;
 		b3BodySim* bodySimB;
-		if ( wasTouching )
+		if ( wasTouching && ground == -1 )
 		{
 			B3_ASSERT( bodyA->setIndex == b3_awakeSet || bodyA->setIndex == b3_staticSet );
 			B3_ASSERT( bodyB->setIndex == b3_awakeSet || bodyB->setIndex == b3_staticSet );
@@ -648,8 +652,8 @@ static void b3CollideTask( int startIndex, int endIndex, int workerIndex, void* 
 		// These are used by the contact solver. If the contact is between an awake body
 		// and a sleeping body and the contact begins to touch, the these will be invalid
 		// but fixed when linked in the constraint graph.
-		contact->bodySimIndexA = isStaticA ? B3_NULL_INDEX : bodyA->localIndex;
-		contact->bodySimIndexB = isStaticB ? B3_NULL_INDEX : bodyB->localIndex;
+		contact->bodySimIndexA = isStaticA || ground == 0 ? B3_NULL_INDEX : bodyA->localIndex;
+		contact->bodySimIndexB = isStaticB || ground == 1 ? B3_NULL_INDEX : bodyB->localIndex;
 		float recycleTolerance = wasTouching ? recycleDistance : recycleDistanceNonTouching;
 
 		// Contact recycling optimization. Please cite this library if you use this optimization.
@@ -1013,7 +1017,12 @@ static void b3Collide( b3StepContext* context )
 				b3AddNonTouchingContact( world, contact );
 
 				bool isMeshContact = contact->flags & b3_simMeshContact;
-				b3RemoveContactFromGraph( world, bodyIdA, bodyIdB, colorIndex, localIndex, isMeshContact );
+
+				// AtomWorld patch: a ground side took no colour, and its body's bit belongs to another constraint.
+				int ground = b3GroundSide( world->oneWayAsGround, contact->flags );
+				int colouredA = ground == 0 ? bodyIdB : bodyIdA;
+				int colouredB = ground == 1 ? bodyIdA : bodyIdB;
+				b3RemoveContactFromGraph( world, colouredA, colouredB, colorIndex, localIndex, isMeshContact );
 				contact = NULL;
 			}
 
@@ -2145,6 +2154,20 @@ void b3World_SetOneWayCategory( b3WorldId worldId, uint64_t categoryBits )
 	B3_REC( world, WorldSetOneWayCategory, worldId, categoryBits );
 
 	world->oneWayCategoryBits = categoryBits;
+}
+
+void b3World_SetOneWayAsGround( b3WorldId worldId, bool flag )
+{
+	b3World* world = b3GetWorldFromId( worldId );
+	B3_ASSERT( world->locked == false );
+	if ( world == NULL )
+	{
+		return;
+	}
+
+	B3_REC( world, WorldSetOneWayAsGround, worldId, flag );
+
+	world->oneWayAsGround = flag;
 }
 
 void b3World_SetContactTuning( b3WorldId worldId, float hertz, float dampingRatio, float contactSpeed )
@@ -4085,7 +4108,8 @@ void b3ValidateContacts( b3World* world )
 				b3Body* bodyA = b3Array_Get( world->bodies, shapeA->bodyId );
 				b3Body* bodyB = b3Array_Get( world->bodies, shapeB->bodyId );
 
-				if ( bodyA->type == b3_staticBody )
+				int ground = b3GroundSide( world->oneWayAsGround, contact->flags );
+				if ( bodyA->type == b3_staticBody || ground == 0 )
 				{
 					B3_ASSERT( contact->bodySimIndexA == B3_NULL_INDEX );
 				}
@@ -4094,7 +4118,7 @@ void b3ValidateContacts( b3World* world )
 					B3_ASSERT( contact->bodySimIndexA == bodyA->localIndex );
 				}
 
-				if ( bodyB->type == b3_staticBody )
+				if ( bodyB->type == b3_staticBody || ground == 1 )
 				{
 					B3_ASSERT( contact->bodySimIndexB == B3_NULL_INDEX );
 				}
