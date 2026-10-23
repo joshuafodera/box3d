@@ -201,12 +201,6 @@ typedef struct b3StepContext
 	// shortcut to body sims from awake set
 	b3BodySim* sims;
 
-	// AtomWorld patch: every awake body's state as the last integrate stage left it, for the ground
-	// side of a one-way contact (b3World_SetOneWayGroundMoves). Written only by the integrate stages
-	// and read only by the stages between them, so a contact may read a body another contact of its
-	// own colour is writing. NULL when ground does not move.
-	b3BodyState* stillStates;
-
 	// array of all shape ids for shapes that have enlarged AABBs
 	int* enlargedShapes;
 	int enlargedShapeCount;

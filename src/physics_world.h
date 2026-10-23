@@ -234,9 +234,6 @@ typedef struct b3World
 	// AtomWorld patch: one-way contacts treat their immovable side as ground to islands, colouring
 	// and the solver (b3World_SetOneWayAsGround).
 	bool oneWayAsGround;
-
-	// AtomWorld patch: that ground side moves with its body's velocity (b3World_SetOneWayGroundMoves).
-	bool oneWayGroundMoves;
 	float contactHertz;
 	float contactDampingRatio;
 	float contactRecycleDistance;

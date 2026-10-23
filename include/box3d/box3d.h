@@ -205,11 +205,6 @@ B3_API void b3World_SetOneWayCategory( b3WorldId worldId, uint64_t categoryBits 
 /// on something moving is shoved out of it rather than carried. Off by default.
 B3_API void b3World_SetOneWayAsGround( b3WorldId worldId, bool flag );
 
-/// AtomWorld patch: with one-way contacts as ground, the ground side moves at its body's velocity,
-/// held from the step's start, so a one-way body lying on something moving is carried by it rather
-/// than shoved out of it. Off by default.
-B3_API void b3World_SetOneWayGroundMoves( b3WorldId worldId, bool flag );
-
 /// Set the contact point recycling distance. Setting this to zero disables contact point recycling.
 /// Usually in meters.
 B3_API void b3World_SetContactRecycleDistance( b3WorldId worldId, float recycleDistance );

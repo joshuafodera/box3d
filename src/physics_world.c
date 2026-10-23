@@ -2170,20 +2170,6 @@ void b3World_SetOneWayAsGround( b3WorldId worldId, bool flag )
 	world->oneWayAsGround = flag;
 }
 
-void b3World_SetOneWayGroundMoves( b3WorldId worldId, bool flag )
-{
-	b3World* world = b3GetWorldFromId( worldId );
-	B3_ASSERT( world->locked == false );
-	if ( world == NULL )
-	{
-		return;
-	}
-
-	B3_REC( world, WorldSetOneWayGroundMoves, worldId, flag );
-
-	world->oneWayGroundMoves = flag;
-}
-
 void b3World_SetContactTuning( b3WorldId worldId, float hertz, float dampingRatio, float contactSpeed )
 {
 	b3World* world = b3GetUnlockedWorldFromId( worldId );

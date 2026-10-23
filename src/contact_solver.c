@@ -27,37 +27,6 @@
 // s(t) = s0 + dot(cB0 - cA0, normal) + dot(dpB - dpA + rot(dqB, rB0) - rot(dqA, rA0), normal)
 // s_base = s0 + dot(cB0 - cA0, normal)
 
-// AtomWorld patch: the awake index of a one-way contact's ground side when it moves
-// (b3World_SetOneWayGroundMoves); its side in `side`, -1 when there is no ground side, or it is
-// static or asleep. The ground side takes no colour, so the solve reads it from the step's still
-// states, never from the body another contact of its colour may be writing.
-static int b3StillIndex( b3World* world, const b3Contact* contact, int* side )
-{
-	*side = b3GroundSide( world->oneWayAsGround && world->oneWayGroundMoves, contact->flags );
-	if ( *side == -1 )
-	{
-		return B3_NULL_INDEX;
-	}
-
-	b3Body* body = b3Array_Get( world->bodies, contact->edges[*side].bodyId );
-	if ( body->setIndex != b3_awakeSet )
-	{
-		*side = -1;
-		return B3_NULL_INDEX;
-	}
-
-	return body->localIndex;
-}
-
-// AtomWorld patch: a moving ground side as the last integrate stage left it, as a local copy with no
-// flags, so nothing is written back to it.
-static b3BodyState b3StillState( const b3StepContext* context, int stillIndex )
-{
-	b3BodyState state = context->stillStates[stillIndex];
-	state.flags = 0;
-	return state;
-}
-
 // Prepare a mesh constraints
 void b3PrepareContacts_Mesh( b3SolverBlock block, b3StepContext* context )
 {
@@ -188,23 +157,6 @@ void b3PrepareContacts_Mesh( b3SolverBlock block, b3StepContext* context )
 				mB = 0.0f;
 				iB = b3Mat3_zero;
 			}
-
-			// AtomWorld patch: a ground side that moves carries what lies on it (b3World_SetOneWayGroundMoves).
-			int stillSide;
-			int stillIndex = b3StillIndex( world, contact, &stillSide );
-			if ( stillSide == 0 )
-			{
-				vA = bodyStates[stillIndex].linearVelocity;
-				wA = bodyStates[stillIndex].angularVelocity;
-			}
-			else if ( stillSide == 1 )
-			{
-				vB = bodyStates[stillIndex].linearVelocity;
-				wB = bodyStates[stillIndex].angularVelocity;
-			}
-
-			contactConstraint->stillSide = stillSide;
-			contactConstraint->stillIndex = stillIndex;
 
 			int manifoldCount = contact->manifoldCount;
 			contactConstraint->contact = contact;
@@ -452,27 +404,11 @@ void b3SolveContacts_Mesh( b3SolverBlock block, b3StepContext* context, bool use
 		b3Matrix3 iB = contactConstraint->invIB;
 
 		b3BodyState* stateA = indexA == B3_NULL_INDEX ? &dummyState : states + indexA;
-		b3BodyState* stateB = indexB == B3_NULL_INDEX ? &dummyState : states + indexB;
-
-		// AtomWorld patch: a ground side that moves (b3World_SetOneWayGroundMoves).
-		b3BodyState stillState;
-		if ( contactConstraint->stillSide != -1 )
-		{
-			stillState = b3StillState( context, contactConstraint->stillIndex );
-			if ( contactConstraint->stillSide == 0 )
-			{
-				stateA = &stillState;
-			}
-			else
-			{
-				stateB = &stillState;
-			}
-		}
-
 		b3Vec3 vA = stateA->linearVelocity;
 		b3Vec3 wA = stateA->angularVelocity;
 		b3Quat dqA = stateA->deltaRotation;
 
+		b3BodyState* stateB = indexB == B3_NULL_INDEX ? &dummyState : states + indexB;
 		b3Vec3 vB = stateB->linearVelocity;
 		b3Vec3 wB = stateB->angularVelocity;
 		b3Quat dqB = stateB->deltaRotation;
@@ -677,21 +613,6 @@ void b3ApplyRestitution_Mesh( b3SolverBlock block, b3StepContext* context )
 
 		b3BodyState* stateA = indexA == B3_NULL_INDEX ? &dummyState : states + indexA;
 		b3BodyState* stateB = indexB == B3_NULL_INDEX ? &dummyState : states + indexB;
-
-		// AtomWorld patch: a ground side that moves (b3World_SetOneWayGroundMoves).
-		b3BodyState stillState;
-		if ( contactConstraint->stillSide != -1 )
-		{
-			stillState = b3StillState( context, contactConstraint->stillIndex );
-			if ( contactConstraint->stillSide == 0 )
-			{
-				stateA = &stillState;
-			}
-			else
-			{
-				stateB = &stillState;
-			}
-		}
 
 		b3Vec3 vA = stateA->linearVelocity;
 		b3Vec3 wA = stateA->angularVelocity;
@@ -1488,11 +1409,6 @@ typedef struct b3ContactConstraintWide
 
 	b3Manifold* manifolds[B3_SIMD_WIDTH];
 
-	// AtomWorld patch: lanes whose ground side moves (b3World_SetOneWayGroundMoves), bit lane for A
-	// and bit lane + B3_SIMD_WIDTH for B, and that side's awake index into the step's still states.
-	int stillLanes;
-	int stillIndex[B3_SIMD_WIDTH];
-
 	// todo store the maximum point count per wide constraint
 	// to make this work I need zero initialization which is too
 	// expensive for all the wide constraint data. Instead
@@ -1736,44 +1652,6 @@ static void b3ScatterBodies( b3BodyState* states, int* indices, const b3BodyStat
 #endif
 
 // Prepare convex contact constraints
-// AtomWorld patch: the lanes whose ground side moves take it as the last integrate stage left it
-// (b3World_SetOneWayGroundMoves). Lanes with no solver body are never scattered back.
-static void b3MoveStillLanes( b3BodyStateW* bodyA, b3BodyStateW* bodyB, const b3ContactConstraintWide* c,
-							  const b3BodyState* stillStates )
-{
-	for ( int lane = 0; lane < B3_SIMD_WIDTH; ++lane )
-	{
-		b3BodyStateW* body;
-		if ( c->stillLanes & ( 1 << lane ) )
-		{
-			body = bodyA;
-		}
-		else if ( c->stillLanes & ( 1 << ( lane + B3_SIMD_WIDTH ) ) )
-		{
-			body = bodyB;
-		}
-		else
-		{
-			continue;
-		}
-
-		const b3BodyState* s = stillStates + c->stillIndex[lane];
-		( (float*)&body->v.X )[lane] = s->linearVelocity.x;
-		( (float*)&body->v.Y )[lane] = s->linearVelocity.y;
-		( (float*)&body->v.Z )[lane] = s->linearVelocity.z;
-		( (float*)&body->w.X )[lane] = s->angularVelocity.x;
-		( (float*)&body->w.Y )[lane] = s->angularVelocity.y;
-		( (float*)&body->w.Z )[lane] = s->angularVelocity.z;
-		( (float*)&body->dp.X )[lane] = s->deltaPosition.x;
-		( (float*)&body->dp.Y )[lane] = s->deltaPosition.y;
-		( (float*)&body->dp.Z )[lane] = s->deltaPosition.z;
-		( (float*)&body->dq.V.X )[lane] = s->deltaRotation.v.x;
-		( (float*)&body->dq.V.Y )[lane] = s->deltaRotation.v.y;
-		( (float*)&body->dq.V.Z )[lane] = s->deltaRotation.v.z;
-		( (float*)&body->dq.S )[lane] = s->deltaRotation.s;
-	}
-}
-
 void b3PrepareContacts_Convex( b3SolverBlock block, b3StepContext* context )
 {
 	b3TracyCZoneNC( prepare_contact, "Prepare Contact", b3_colorYellow, true );
@@ -1815,7 +1693,6 @@ void b3PrepareContacts_Convex( b3SolverBlock block, b3StepContext* context )
 		{
 			b3ContactConstraintWide* constraint = wideBase + wideIndex;
 			int localWideIndex = wideIndex - colorWideStart;
-			constraint->stillLanes = 0;
 
 			for ( int lane = 0; lane < B3_SIMD_WIDTH; ++lane )
 			{
@@ -1907,25 +1784,6 @@ void b3PrepareContacts_Convex( b3SolverBlock block, b3StepContext* context )
 				{
 					mB = 0.0f;
 					iB = b3Mat3_zero;
-				}
-
-				// AtomWorld patch: a ground side that moves carries what lies on it (see the scalar path).
-				int stillSide;
-				int stillIndex = b3StillIndex( world, contact, &stillSide );
-				if ( stillSide != -1 )
-				{
-					constraint->stillLanes |= 1 << ( lane + stillSide * B3_SIMD_WIDTH );
-					constraint->stillIndex[lane] = stillIndex;
-					if ( stillSide == 0 )
-					{
-						vA = states[stillIndex].linearVelocity;
-						wA = states[stillIndex].angularVelocity;
-					}
-					else
-					{
-						vB = states[stillIndex].linearVelocity;
-						wB = states[stillIndex].angularVelocity;
-					}
 				}
 
 				( (float*)&constraint->invMassA )[lane] = mA;
@@ -2185,11 +2043,6 @@ void b3SolveContacts_Convex( b3SolverBlock block, b3StepContext* context, bool u
 		b3BodyStateW bA = b3GatherBodies( states, c->indexA );
 		b3BodyStateW bB = b3GatherBodies( states, c->indexB );
 
-		if ( c->stillLanes != 0 )
-		{
-			b3MoveStillLanes( &bA, &bB, c, context->stillStates );
-		}
-
 		b3FloatW biasRate, massScale, impulseScale;
 		if ( useBias )
 		{
@@ -2400,11 +2253,6 @@ void b3ApplyRestitution_Convex( b3SolverBlock block, b3StepContext* context )
 		// Single gather for all manifolds
 		b3BodyStateW bA = b3GatherBodies( states, c->indexA );
 		b3BodyStateW bB = b3GatherBodies( states, c->indexB );
-
-		if ( c->stillLanes != 0 )
-		{
-			b3MoveStillLanes( &bA, &bB, c, context->stillStates );
-		}
 
 		// Create a mask based on restitution so that lanes with no restitution are not affected
 		// by the calculations below.
