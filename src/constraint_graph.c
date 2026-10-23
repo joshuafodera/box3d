@@ -92,18 +92,6 @@ void b3AddContactToGraph( b3World* world, b3Contact* contact )
 	b3BodyType typeB = bodyB->type;
 	B3_ASSERT( typeA == b3_dynamicBody || typeB == b3_dynamicBody );
 
-	// AtomWorld patch: the ground side of a one-way contact is coloured as ground — only the
-	// one-way body takes the colour — and is solved as a still body (b3World_SetOneWayAsGround).
-	int ground = b3GroundSide( world->oneWayAsGround, contact->flags );
-	if ( ground == 0 )
-	{
-		typeA = b3_staticBody;
-	}
-	else if ( ground == 1 )
-	{
-		typeB = b3_staticBody;
-	}
-
 #if B3_FORCE_OVERFLOW == 0
 	if ( typeA == b3_dynamicBody && typeB == b3_dynamicBody )
 	{
@@ -161,8 +149,8 @@ void b3AddContactToGraph( b3World* world, b3Contact* contact )
 	b3GraphColor* color = graph->colors + colorIndex;
 	contact->colorIndex = colorIndex;
 	contact->localIndex = isScalar ? color->contacts.count : color->convexContacts.count;
-	contact->bodySimIndexA = typeA == b3_staticBody ? B3_NULL_INDEX : bodyA->localIndex;
-	contact->bodySimIndexB = typeB == b3_staticBody ? B3_NULL_INDEX : bodyB->localIndex;
+	contact->bodySimIndexA = bodyA->type == b3_staticBody ? B3_NULL_INDEX : bodyA->localIndex;
+	contact->bodySimIndexB = bodyB->type == b3_staticBody ? B3_NULL_INDEX : bodyB->localIndex;
 
 	if ( isScalar )
 	{

@@ -245,20 +245,12 @@ void b3TrySleepIsland( b3World* world, int islandId )
 
 				b3Contact* contact = b3Array_Get( world->contacts, contactId );
 
-				// AtomWorld patch: a one-way contact can be asleep with its one-way body while its
-				// ground side is awake (b3World_SetOneWayAsGround); it stays with the one-way body.
-				B3_ASSERT( contact->setIndex == b3_awakeSet || contact->setIndex == b3_disabledSet ||
-						   b3GroundSide( world->oneWayAsGround, contact->flags ) != -1 );
+				B3_ASSERT( contact->setIndex == b3_awakeSet || contact->setIndex == b3_disabledSet );
 				contactKey = contact->edges[edgeIndex].nextKey;
 
 				if ( contact->setIndex == b3_disabledSet )
 				{
 					// already moved to disabled set by another body in the island
-					continue;
-				}
-
-				if ( contact->setIndex != b3_awakeSet )
-				{
 					continue;
 				}
 
@@ -323,18 +315,9 @@ void b3TrySleepIsland( b3World* world, int islandId )
 			// Remove bodies from graph coloring associated with this constraint
 			if ( colorIndex != B3_OVERFLOW_INDEX )
 			{
-				// might clear a bit for a static body, but this has no effect. AtomWorld patch: a one-way
-				// contact's ground side took no colour, and its body's bit belongs to another constraint.
-				int ground = b3GroundSide( world->oneWayAsGround, contact->flags );
-				if ( ground != 0 )
-				{
-					b3ClearBit( &color->bodySet, contact->edges[0].bodyId );
-				}
-
-				if ( ground != 1 )
-				{
-					b3ClearBit( &color->bodySet, contact->edges[1].bodyId );
-				}
+				// might clear a bit for a static body, but this has no effect
+				b3ClearBit( &color->bodySet, contact->edges[0].bodyId );
+				b3ClearBit( &color->bodySet, contact->edges[1].bodyId );
 			}
 
 			int sleepContactIndex = sleepSet->contactIndices.count;

@@ -73,18 +73,6 @@ enum b3ContactFlags
 	b3_relativeTransformValid = 0x00800000,
 };
 
-// AtomWorld patch: which side of a contact is ground to islands, colouring and the solver when one-way
-// contacts are ground (b3World_SetOneWayAsGround): 0 for A, 1 for B, -1 for neither.
-static inline int b3GroundSide( bool oneWayAsGround, uint32_t flags )
-{
-	if ( oneWayAsGround == false )
-	{
-		return -1;
-	}
-
-	return ( flags & b3_contactOneWayA ) ? 0 : ( flags & b3_contactOneWayB ) ? 1 : -1;
-}
-
 // A contact edge is used to connect bodies and contacts together
 // in a contact graph where each body is a node and each contact
 // is an edge. A contact edge belongs to a doubly linked list

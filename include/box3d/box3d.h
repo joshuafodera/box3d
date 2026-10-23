@@ -198,13 +198,6 @@ B3_API void b3World_SetContactTuning( b3WorldId worldId, float hertz, float damp
 /// Applies to contacts made after the call. Zero (the default) turns it off.
 B3_API void b3World_SetOneWayCategory( b3WorldId worldId, uint64_t categoryBits );
 
-/// AtomWorld patch: the immovable side of a one-way contact is GROUND to the rest of the step, not
-/// only to the impulse: the contact links only the one-way body's island (the world may wake it; it
-/// wakes nothing and keeps nothing awake), colours only the one-way body (so it never spills a busy
-/// body's constraints into the overflow colour), and solves against a still body. A one-way body
-/// on something moving is shoved out of it rather than carried. Off by default.
-B3_API void b3World_SetOneWayAsGround( b3WorldId worldId, bool flag );
-
 /// Set the contact point recycling distance. Setting this to zero disables contact point recycling.
 /// Usually in meters.
 B3_API void b3World_SetContactRecycleDistance( b3WorldId worldId, float recycleDistance );

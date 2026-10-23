@@ -204,24 +204,6 @@ void b3LinkContact( b3World* world, b3Contact* contact )
 	B3_ASSERT( bodyA->setIndex != b3_disabledSet && bodyB->setIndex != b3_disabledSet );
 	B3_ASSERT( bodyA->setIndex != b3_staticSet || bodyB->setIndex != b3_staticSet );
 
-	// AtomWorld patch: a one-way contact whose immovable side is ground (b3World_SetOneWayAsGround)
-	// joins only the one-way body's island, as a contact with the ground does. The world may wake
-	// the one-way body; the one-way body never wakes the world, nor keeps it awake.
-	int ground = b3GroundSide( world->oneWayAsGround, contact->flags );
-	if ( ground != -1 )
-	{
-		b3Body* mover = ground == 0 ? bodyB : bodyA;
-		b3Body* still = ground == 0 ? bodyA : bodyB;
-		if ( still->setIndex == b3_awakeSet && mover->setIndex >= b3_firstSleepingSet )
-		{
-			b3WakeSolverSet( world, mover->setIndex );
-		}
-
-		B3_ASSERT( mover->islandId != B3_NULL_INDEX );
-		b3AddContactToIsland( world, mover->islandId, contact );
-		return;
-	}
-
 	// Wake bodyB if bodyA is awake and bodyB is sleeping
 	if ( bodyA->setIndex == b3_awakeSet && bodyB->setIndex >= b3_firstSleepingSet )
 	{

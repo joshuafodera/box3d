@@ -230,10 +230,6 @@ typedef struct b3World
 	// AtomWorld patch: shapes in these categories meet the rest of the world one way. The world
 	// moves them; they never move it (b3World_SetOneWayCategory).
 	uint64_t oneWayCategoryBits;
-
-	// AtomWorld patch: one-way contacts treat their immovable side as ground to islands, colouring
-	// and the solver (b3World_SetOneWayAsGround).
-	bool oneWayAsGround;
 	float contactHertz;
 	float contactDampingRatio;
 	float contactRecycleDistance;
