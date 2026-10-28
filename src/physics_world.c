@@ -739,9 +739,31 @@ static void b3CollideTask( int startIndex, int endIndex, int workerIndex, void* 
 		contact->cachedRelativePose = b3InvMulWorldTransforms( transformA, transformB );
 		contact->flags |= b3_relativeTransformValid;
 
+		// atom-world patch: the pair's speculative band reaches as far as the two can close this step
+		// (their speeds, linear and turning at their extent), so a fast meeting is stopped on the
+		// surface instead of found inside. A pair at rest keeps upstream's band.
+		float lookahead = b3GetSpeculativeLookahead();
+		if ( lookahead > 0.0f )
+		{
+			b3BodyState* awakeStates = world->solverSets.data[b3_awakeSet].bodyStates.data;
+			float closing = 0.0f;
+			if ( bodyA->setIndex == b3_awakeSet )
+			{
+				b3BodyState* state = awakeStates + bodyA->localIndex;
+				closing += b3Length( state->linearVelocity ) + b3Length( state->angularVelocity ) * b3Length( bodySimA->maxExtent );
+			}
+			if ( bodyB->setIndex == b3_awakeSet )
+			{
+				b3BodyState* state = awakeStates + bodyB->localIndex;
+				closing += b3Length( state->linearVelocity ) + b3Length( state->angularVelocity ) * b3Length( bodySimB->maxExtent );
+			}
+			b3SetPairSpeculativeDistance( lookahead * closing * stepContext->dt );
+		}
+
 		// This updates solid contacts
 		bool touching = b3UpdateContact( world, workerIndex, contact, shapeA, bodySimA->localCenter, transformA, shapeB,
 										 bodySimB->localCenter, transformB, isFast, taskContext->arena );
+		b3SetPairSpeculativeDistance( 0.0f );
 
 		int bucketIndex = b3MinInt( contact->manifoldCount, B3_CONTACT_MANIFOLD_COUNT_BUCKETS - 1 );
 		if ( bucketIndex > 0 )

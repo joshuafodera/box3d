@@ -49,6 +49,42 @@ float b3GetLengthUnitsPerMeter( void )
 	return b3_lengthUnitsPerMeter;
 }
 
+// atom-world patch: contacts made ahead of the motion (cd docs/engine/work/contacts-ahead.md).
+// Upstream's speculative band is 4 x slop, sized for bodies a metre across at one unit a metre.
+// With one unit an atom it is 0.8 mm, so anything closing faster than ~5 cm/s arrives inside what
+// it meets. The lookahead widens a pair's band, and a moving body's bounds, by the distance it can
+// close in one step; a pair at rest keeps upstream's band exactly.
+#if defined( _MSC_VER ) && !defined( __clang__ )
+#define B3_THREAD_LOCAL __declspec( thread )
+#else
+#define B3_THREAD_LOCAL _Thread_local
+#endif
+
+static float b3_speculativeLookahead = 0.0f;
+static B3_THREAD_LOCAL float b3_pairSpeculativeDistance = 0.0f;
+
+void b3SetSpeculativeLookahead( float steps )
+{
+	B3_ASSERT( b3IsValidFloat( steps ) && steps >= 0.0f );
+	b3_speculativeLookahead = steps;
+}
+
+float b3GetSpeculativeLookahead( void )
+{
+	return b3_speculativeLookahead;
+}
+
+void b3SetPairSpeculativeDistance( float distance )
+{
+	b3_pairSpeculativeDistance = distance;
+}
+
+float b3SpeculativeDistance( void )
+{
+	float upstream = 4.0f * B3_LINEAR_SLOP;
+	return b3_pairSpeculativeDistance > upstream ? b3_pairSpeculativeDistance : upstream;
+}
+
 static float b3_stallThreshold = FLT_MAX;
 
 void b3SetStallThreshold(float seconds)

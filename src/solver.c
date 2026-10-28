@@ -501,6 +501,10 @@ static void b3SolveContinuous( b3World* world, int bodySimIndex, b3TaskContext* 
 
 	b3Sweep sweep = b3MakeRelativeSweep( fastBodySim, base );
 
+	// atom-world patch: how far ahead this body's contacts reach — its travel this step, held for the
+	// next (b3SetSpeculativeLookahead; 0 leaves upstream's bounds).
+	float lookaheadMargin = b3GetSpeculativeLookahead() * b3Length( b3Sub( sweep.c2, sweep.c1 ) );
+
 	b3Transform xf1;
 	xf1.q = sweep.q1;
 	xf1.p = b3Sub( sweep.c1, b3RotateVector( sweep.q1, sweep.localCenter ) );
@@ -538,6 +542,11 @@ static void b3SolveContinuous( b3World* world, int bodySimIndex, b3TaskContext* 
 		b3AABB box2 = b3OffsetAABB( b3ComputeShapeAABB( fastShape, xf2 ), base );
 
 		// Store this to avoid double computation in the case there is no impact event
+		// atom-world patch: a fast body's bounds reach a step ahead too (see the finalize task), or a
+		// body fast enough for this pass but meeting something it does not sweep (anything but the
+		// static) never has the pair before it lands.
+		box2.lowerBound = b3Sub( box2.lowerBound, (b3Vec3){ lookaheadMargin, lookaheadMargin, lookaheadMargin } );
+		box2.upperBound = b3Add( box2.upperBound, (b3Vec3){ lookaheadMargin, lookaheadMargin, lookaheadMargin } );
 		fastShape->aabb = box2;
 
 		// No continuous collision for meshes
@@ -589,7 +598,7 @@ static void b3SolveContinuous( b3World* world, int bodySimIndex, b3TaskContext* 
 			b3Shape* shape = b3Array_Get( world->shapes, shapeId );
 
 			// Must recompute aabb at the interpolated transform
-			b3AABB aabb = b3ComputeFatShapeAABB( shape, transform, speculativeScalar );
+			b3AABB aabb = b3ComputeFatShapeAABB( shape, transform, b3MaxFloat( speculativeScalar, lookaheadMargin ) );
 			shape->aabb = aabb;
 
 			if ( b3AABB_Contains( shape->fatAABB, aabb ) == false )
@@ -914,6 +923,10 @@ static void b3FinalizeBodiesTask( int startIndex, int endIndex, int workerIndex,
 		// Update shapes AABBs
 		b3WorldTransform transform = sim->transform;
 		bool isFast = ( sim->flags & b3_isFast ) != 0;
+
+		// atom-world patch: a moving body's bounds reach as far as it can travel next step, so the
+		// pair it is closing on exists (and gets a speculative point) before it arrives.
+		float bodySpeculative = b3MaxFloat( speculativeScalar, b3GetSpeculativeLookahead() * maxVelocity * timeStep );
 		int shapeId = body->headShapeId;
 		while ( shapeId != B3_NULL_INDEX )
 		{
@@ -930,7 +943,7 @@ static void b3FinalizeBodiesTask( int startIndex, int endIndex, int workerIndex,
 			}
 			else
 			{
-				b3AABB aabb = b3ComputeFatShapeAABB( shape, transform, speculativeScalar );
+				b3AABB aabb = b3ComputeFatShapeAABB( shape, transform, bodySpeculative );
 				shape->aabb = aabb;
 
 				B3_ASSERT( shape->enlargedAABB == false );

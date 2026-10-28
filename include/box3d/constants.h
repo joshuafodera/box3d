@@ -70,7 +70,21 @@ B3_API float b3GetStallThreshold( void );
 #define B3_MAX_ROTATION ( 0.25f * B3_PI )
 
 /// @warning modifying this can have a significant impact on performance and stability
-#define B3_SPECULATIVE_DISTANCE ( 4.0f * B3_LINEAR_SLOP )
+/// atom-world patch: the speculative distance of the pair being collided on this thread, never less
+/// than the upstream 4 x slop. See b3SetSpeculativeLookahead.
+#define B3_SPECULATIVE_DISTANCE ( b3SpeculativeDistance() )
+
+/// atom-world patch: the speculative distance in force on this thread (upstream's 4 x slop, or the
+/// wider band b3CollideTask sets for one pair while it builds that pair's manifold).
+float b3SpeculativeDistance( void );
+
+/// atom-world patch: how many steps ahead a moving pair's contacts reach. 0 is upstream; 1 makes
+/// a pair's speculative band, and a moving body's bounds, as wide as it can close in one step.
+void b3SetSpeculativeLookahead( float steps );
+float b3GetSpeculativeLookahead( void );
+
+/// atom-world patch: the band for the pair b3CollideTask is updating on this thread (0 resets).
+void b3SetPairSpeculativeDistance( float distance );
 
 /// The rest offset is used for mesh contact to reduce ghost collisions and assist with CCD.
 /// The rest offset adjusts the contact point separation value, making the solver push the shapes
