@@ -741,9 +741,12 @@ static void b3CollideTask( int startIndex, int endIndex, int workerIndex, void* 
 
 		// atom-world patch: the pair's speculative band reaches as far as the two can close this step
 		// (their speeds, linear and turning at their extent), so a fast meeting is stopped on the
-		// surface instead of found inside. A pair at rest keeps upstream's band.
+		// surface instead of found inside. A pair at rest keeps upstream's band. Only between two
+		// moving bodies: against the static the continuous pass already sweeps a fast body, and the
+		// engine answers a striker into yielding ground itself (its press), which a band that stops
+		// the striker on the surface first would pre-empt.
 		float lookahead = b3GetSpeculativeLookahead();
-		if ( lookahead > 0.0f )
+		if ( lookahead > 0.0f && isStaticA == false && isStaticB == false )
 		{
 			b3BodyState* awakeStates = world->solverSets.data[b3_awakeSet].bodyStates.data;
 			float closing = 0.0f;

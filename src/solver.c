@@ -351,6 +351,18 @@ typedef struct b3ContinuousContext
 } b3ContinuousContext;
 
 // This is called from b3DynamicTree_Query for continuous collision
+// atom-world patch: with the speculative lookahead on, every fast body is swept as a bullet is —
+// against moving bodies as well as the static, in the bullet pass, once every other body has its
+// final pose. Upstream sweeps a fast non-bullet against the static only, so a plank thrown onto a
+// loose plank landed wholly inside it (bench-slam-drop, 2026-10-29).
+#ifndef B3_SWEEP_FAST
+#define B3_SWEEP_FAST 0
+#endif
+static bool b3SweptAsBullet( const b3BodySim* sim )
+{
+	return ( sim->flags & b3_isBullet ) || ( B3_SWEEP_FAST && b3GetSpeculativeLookahead() > 0.0f && ( sim->flags & b3_isFast ) );
+}
+
 static bool b3ContinuousQueryCallback( int proxyId, uint64_t userData, void* context )
 {
 	B3_UNUSED( proxyId );
@@ -396,10 +408,10 @@ static bool b3ContinuousQueryCallback( int proxyId, uint64_t userData, void* con
 	b3Body* body = b3Array_Get( world->bodies, shape->bodyId );
 
 	b3BodySim* bodySim = b3GetBodySim( world, body );
-	B3_ASSERT( body->type == b3_staticBody || ( fastBodySim->flags & b3_isBullet ) );
+	B3_ASSERT( body->type == b3_staticBody || b3SweptAsBullet( fastBodySim ) );
 
 	// Skip bullets
-	if ( bodySim->flags & b3_isBullet )
+	if ( b3SweptAsBullet( bodySim ) )
 	{
 		return true;
 	}
@@ -501,10 +513,6 @@ static void b3SolveContinuous( b3World* world, int bodySimIndex, b3TaskContext* 
 
 	b3Sweep sweep = b3MakeRelativeSweep( fastBodySim, base );
 
-	// atom-world patch: how far ahead this body's contacts reach — its travel this step, held for the
-	// next (b3SetSpeculativeLookahead; 0 leaves upstream's bounds).
-	float lookaheadMargin = b3GetSpeculativeLookahead() * b3Length( b3Sub( sweep.c2, sweep.c1 ) );
-
 	b3Transform xf1;
 	xf1.q = sweep.q1;
 	xf1.p = b3Sub( sweep.c1, b3RotateVector( sweep.q1, sweep.localCenter ) );
@@ -525,7 +533,7 @@ static void b3SolveContinuous( b3World* world, int bodySimIndex, b3TaskContext* 
 	context.fastBodySim = fastBodySim;
 	context.fraction = 1.0f;
 
-	bool isBullet = ( fastBodySim->flags & b3_isBullet ) != 0;
+	bool isBullet = b3SweptAsBullet( fastBodySim );
 
 	int shapeId = fastBody->headShapeId;
 	while ( shapeId != B3_NULL_INDEX )
@@ -542,11 +550,6 @@ static void b3SolveContinuous( b3World* world, int bodySimIndex, b3TaskContext* 
 		b3AABB box2 = b3OffsetAABB( b3ComputeShapeAABB( fastShape, xf2 ), base );
 
 		// Store this to avoid double computation in the case there is no impact event
-		// atom-world patch: a fast body's bounds reach a step ahead too (see the finalize task), or a
-		// body fast enough for this pass but meeting something it does not sweep (anything but the
-		// static) never has the pair before it lands.
-		box2.lowerBound = b3Sub( box2.lowerBound, (b3Vec3){ lookaheadMargin, lookaheadMargin, lookaheadMargin } );
-		box2.upperBound = b3Add( box2.upperBound, (b3Vec3){ lookaheadMargin, lookaheadMargin, lookaheadMargin } );
 		fastShape->aabb = box2;
 
 		// No continuous collision for meshes
@@ -598,7 +601,7 @@ static void b3SolveContinuous( b3World* world, int bodySimIndex, b3TaskContext* 
 			b3Shape* shape = b3Array_Get( world->shapes, shapeId );
 
 			// Must recompute aabb at the interpolated transform
-			b3AABB aabb = b3ComputeFatShapeAABB( shape, transform, b3MaxFloat( speculativeScalar, lookaheadMargin ) );
+			b3AABB aabb = b3ComputeFatShapeAABB( shape, transform, speculativeScalar );
 			shape->aabb = aabb;
 
 			if ( b3AABB_Contains( shape->fatAABB, aabb ) == false )
@@ -855,7 +858,7 @@ static void b3FinalizeBodiesTask( int startIndex, int endIndex, int workerIndex,
 
 				// Store in fast array for the continuous collision stage
 				// This is deterministic because the order of TOI sweeps doesn't matter
-				if ( sim->flags & b3_isBullet )
+				if ( ( sim->flags & b3_isBullet ) || ( B3_SWEEP_FAST && b3GetSpeculativeLookahead() > 0.0f ) )
 				{
 					int bulletIndex = b3AtomicFetchAddInt( &stepContext->bulletBodyCount, 1 );
 					stepContext->bulletBodies[bulletIndex] = simIndex;
@@ -2227,7 +2230,7 @@ void b3Solve( b3World* world, b3StepContext* stepContext )
 					b3Body* body = bodyArray + bodySim->bodyId;
 
 					int shapeId = body->headShapeId;
-					if ( ( bodySim->flags & ( b3_isBullet | b3_isFast ) ) == ( b3_isBullet | b3_isFast ) )
+					if ( ( bodySim->flags & b3_isFast ) && b3SweptAsBullet( bodySim ) )
 					{
 						// Fast bullet bodies don't have their final AABB yet
 						while ( shapeId != B3_NULL_INDEX )
